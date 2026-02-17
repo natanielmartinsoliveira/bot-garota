@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Girl {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  personality String
+  isActive    Boolean  @default(true)
+
+  instances   Instance[]
+  photos      Photo[]
+  girlClients GirlClient[]
+  interactions Interaction[]
+  conversations Conversation[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Instance {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  apiKey    String
+  baseUrl   String
+  girlId    String
+  girl      Girl     @relation(fields: [girlId], references: [id])
+}
+
+model Client {
+  id        Int      @id @default(autoincrement())
+  phone     String   @unique
+  score     Int      @default(0) // score global
+  flags     String?
+  createdAt DateTime @default(now())
+
+  girlClients GirlClient[]
+  interactions Interaction[]
+}
+
+model GirlClient {
+  id        String   @id @default(uuid())
+  girlId    String
+  clientId  Int
+
+  score     Int      @default(0) // score por garota
+  flags     String?
+
+  girl      Girl     @relation(fields: [girlId], references: [id])
+  client    Client   @relation(fields: [clientId], references: [id])
+  conversations Conversation[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([girlId, clientId])
+}
+
+model Conversation {
+  id           String   @id @default(uuid())
+  girlId       String
+  girlClientId String
+
+  girl         Girl       @relation(fields: [girlId], references: [id])
+  girlClient   GirlClient @relation(fields: [girlClientId], references: [id])
+
+  messages     Message[]
+
+  createdAt    DateTime @default(now())
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  mediaUrl       String?
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  createdAt      DateTime @default(now())
+}
+
+model Interaction {
+  id        Int      @id @default(autoincrement())
+  clientId  Int
+  girlId    String
+  intent    String
+  createdAt DateTime @default(now())
+
+  client    Client   @relation(fields: [clientId], references: [id])
+  girl      Girl     @relation(fields: [girlId], references: [id])
+}
+
+model Photo {
+  id        String   @id @default(uuid())
+  girlId    String
+  url       String
+  type      PhotoType
+  isActive  Boolean  @default(true)
+
+  girl      Girl     @relation(fields: [girlId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+enum PhotoType {
+  PROFILE
+  CASUAL
+  SEDUCTIVE
+  CUSTOM
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}

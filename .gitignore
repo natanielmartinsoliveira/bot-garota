@@ -1,0 +1,13 @@
+#first line
+node_modules/
+dist/
+coverage/
+.env
+.DS_Store
+*.log
+# Ignore database files
+*.db
+*.sqlite
+.wwebjs_auth/
+.chrome/
+

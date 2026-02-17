@@ -1,0 +1,142 @@
+services:
+  api:
+    build: ./api
+    container_name: bot-api
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      evolution:
+        condition: service_healthy
+    volumes:
+      - ./api:/app
+      - wwebjs_auth:/app/.wwebjs_auth
+      - chrome_data:/app/.chrome
+    command: npm run start:dev
+  evolution:
+    image: evoapicloud/evolution-api:latest
+    container_name: evolution-api
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - AUTHENTICATION_API_KEY=teste123
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://botuser:botpass@db:5432/evolutiondb
+      - REDIS_URL=redis://:astrounautaEspacial2024@redis:6379
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - DATABASE_SAVE_DATA_LABELS=true
+      - DATABASE_SAVE_DATA_HISTORIC=true
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution_v2
+      - RABBITMQ_ENABLED=true
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://:astrounautaEspacial2024@redis:6379/1
+      - CACHE_REDIS_PREFIX_KEY=evolution_v2
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_LOCAL_ENABLED=false
+      - CONFIG_SESSION_PHONE_VERSION=2.3000.1033433273
+      - CONFIG_SESSION_WHATSAPP_VERSION=2.3000.1033433273
+      - RABBITMQ_EXCHANGE=evolution
+      - RABBITMQ_EVENTS=MESSAGES_UPSERT
+      - EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - RABBITMQ_EXCHANGE_TYPE=topic
+
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  db:
+    image: postgres:15
+    container_name: bot-db
+    environment:
+      POSTGRES_USER: botuser
+      POSTGRES_PASSWORD: botpass
+    healthcheck:
+      test: ["CMD-SHELL", "cat /initialised.txt && pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    entrypoint: [ "/bin/bash", "-c","
+      docker-entrypoint.sh postgres &
+      rm -f /initialised.txt || true &&
+      until pg_isready -U postgres; do sleep 3; done &&
+      psql -U botuser -d postgres -c 'CREATE DATABASE evolution;' || true &&
+      echo done > /initialised.txt &&
+      wait"
+    ]
+
+  redis:
+    image: redis:7-alpine
+    container_name: bot-redis
+    ports:
+      - "6380:6379"
+    command: >
+      redis-server
+      --requirepass astrounautaEspacial2024
+      --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redisdata:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n
+    container_name: bot-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin123
+      - WEBHOOK_URL=http://localhost:5678/
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  pgdata:
+  n8n_data:
+  redisdata:
+  wwebjs_auth:
+  chrome_data:
