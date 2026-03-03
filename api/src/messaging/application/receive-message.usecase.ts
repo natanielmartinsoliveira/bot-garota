@@ -1,95 +1,208 @@
-// src/messaging/application/receive-message.usecase.ts
 import { Inject, Injectable } from '@nestjs/common';
 import { Message } from '../domain/message';
 import { MessageChannelPort } from '../domain/message-channel.port';
 import type { AIPort } from '../../ai/domain/ai.port';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { MemoryService } from '../../memory/memory.service';
+import { GirlResolveService } from '../../girl/application/girl-resolve.service';
+import { ResponseBuilderService } from 'src/conversation-engine/application/response-builder.service';
 
-@Injectable()
 @Injectable()
 export class ReceiveMessageUseCase {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    @Inject('MESSAGE_CHANNELS')
+    private readonly channels: MessageChannelPort[],
 
-  async execute(payload: {
-    instanceName: string;
-    from: string;
-    content: string;
-  }) {
-    const { instanceName, from, content } = payload;
+    @Inject('AI_PORT')
+    private readonly ai: AIPort,
 
-    // 1️⃣ Resolver garota pela instância
-    const instance = await this.prisma.instance.findUnique({
-      where: { name: instanceName },
-      include: { girl: true },
-    });
+    private readonly prisma: PrismaService,
+    private readonly memoryService: MemoryService,
+    private readonly girlResolver: GirlResolveService,
+    private readonly responseBuilder: ResponseBuilderService,
+    
+  ) {}
 
-    if (!instance?.girl) return;
+  async execute(message: Message) {
+    console.log(`📨 ${message.channel} | ${message.from}:`, message.content);
 
-    const girl = instance.girl;
+    const channel = this.channels.find(
+      (c) => c.channelName === message.channel,
+    );
+    if (!channel) return;
 
-    // 2️⃣ Buscar ou criar cliente global
+    /*
+    =====================================
+    1️⃣ Resolver Girl via GirlResolveService
+    =====================================
+    */
+    if (!message.channel) return;
+    const girlContext =
+      await this.girlResolver.resolveFromChannel(
+        message.channel,
+      );
+
+    if (!girlContext) return;
+
+    /*
+     =====================================
+     2️⃣ Resolver Client + GirlClient
+     =====================================
+    */
     const client = await this.prisma.client.upsert({
-      where: { phone: from },
+      where: { phone: message.from },
       update: {},
-      create: { phone: from },
+      create: { phone: message.from },
     });
 
-    // 3️⃣ Buscar ou criar relacionamento GirlClient
     const girlClient = await this.prisma.girlClient.upsert({
       where: {
         girlId_clientId: {
-          girlId: girl.id,
+          girlId: girlContext.girlId,
           clientId: client.id,
         },
       },
       update: {},
       create: {
-        girlId: girl.id,
+        girlId: girlContext.girlId,
         clientId: client.id,
       },
     });
 
-    // 4️⃣ Criar conversa
-    const conversation = await this.prisma.conversation.create({
-      data: {
-        girlId: girl.id,
-        girlClientId: girlClient.id,
-      },
+    /*
+     =====================================
+     🧠 3️⃣ MEMORY ENGINE
+     =====================================
+    */
+
+    const conversation =
+      await this.memoryService.getOrCreateConversation(
+        girlContext.girlId,
+        girlClient.id,
+      );
+
+    // Salva mensagem do usuário
+    await this.memoryService.saveMessage(
+      conversation.id,
+      'USER',
+      message.content,
+    );
+
+    // Short term
+    const shortTerm =
+      await this.memoryService.getShortTermMemory(
+        conversation.id,
+        12,
+      );
+
+    // Long term
+    const longTerm =
+      await this.memoryService.getRelevantLongTermMemories(
+        girlContext.girlId,
+        girlClient.id,
+        5,
+      );
+
+    /*
+     =====================================
+     🎯 4️⃣ INTENT CLASSIFICATION
+     =====================================
+    */
+
+    const intent = await this.ai.classifyIntent(
+      message.content,
+    );
+
+    console.log('🎯 Intent:', intent);
+
+    /*
+     =====================================
+     🧩 5️⃣ GIRL CONTEXT + PROMPT
+     =====================================
+    */
+
+    const prompt =
+      this.memoryService.buildPromptContext({
+        girlName: girlContext.name,
+        personality: girlContext.personality,
+        shortTermMemory: shortTerm,
+        longTermMemory: longTerm,
+        newMessage: message.content,
+      });
+
+    /*
+     =====================================
+     🤖 6️⃣ AI GENERATION
+     =====================================
+    */
+
+     const totalMessages = await this.prisma.message.count({
+        where: {
+          conversationId: conversation.id,
+        },
+      });
+
+     const reply =
+      await this.responseBuilder.generateReply({
+        girl: {
+          id: girlContext.girlId,
+          name: girlContext.name,
+          personality: girlContext.personality,
+          tone: girlContext.tone || 'friendly',
+        },
+        userId: client.id,
+        message: message.content,
+        totalMessages: totalMessages,
+      });
+
+    /*const reply = await this.ai.generate(`
+      ${prompt}
+
+      Intenção detectada: ${intent}
+
+      Responda mantendo:
+      - personalidade consistente
+      - continuidade emocional
+      - naturalidade humana
+      `);*/
+
+    console.log('🤖 Reply:', reply);
+
+    /*
+     =====================================
+     💾 7️⃣ Persistir resposta
+     =====================================
+    */
+
+    await this.memoryService.saveMessage(
+      conversation.id,
+      'ASSISTANT',
+      reply,
+    );
+
+    /*
+     =====================================
+     🧠 8️⃣ Memory Extraction
+     =====================================
+    */
+
+    await this.memoryService.extractAndStoreMemories({
+      girlId: girlContext.girlId,
+      girlClientId: girlClient.id,
+      conversationWindow: shortTerm,
     });
 
-    // 5️⃣ Salvar mensagem do usuário
-    await this.prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        role: 'USER',
-        content,
-      },
-    });
+    /*
+     =====================================
+     📤 9️⃣ Enviar mensagem
+     =====================================
+    */
 
-    // 6️⃣ Registrar interaction
-    await this.prisma.interaction.create({
-      data: {
-        clientId: client.id,
-        girlId: girl.id,
-        intent: 'MESSAGE_RECEIVED',
-      },
-    });
-
-    // 7️⃣ Atualizar score simples exemplo
-    await this.prisma.girlClient.update({
-      where: { id: girlClient.id },
-      data: { score: { increment: 1 } },
-    });
-
-    await this.prisma.client.update({
-      where: { id: client.id },
-      data: { score: { increment: 1 } },
-    });
-
-    return {
-      girl,
-      client,
-      conversation,
-    };
+    await channel.send({
+      to: message.from,
+      content: reply,
+      channel: message.channel,
+      from: 'bot',
+    } as any);
   }
 }

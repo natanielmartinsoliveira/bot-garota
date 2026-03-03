@@ -8,29 +8,31 @@ datasource db {
 }
 
 model Girl {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
-  slug        String   @unique
+  slug        String  @unique
   personality String
-  isActive    Boolean  @default(true)
+  isActive    Boolean @default(true)
 
-  instances   Instance[]
-  photos      Photo[]
-  girlClients GirlClient[]
-  interactions Interaction[]
-  conversations Conversation[]
+  instances         Instance[]
+  photos            Photo[]
+  girlClients       GirlClient[]
+  interactions      Interaction[]
+  conversations     Conversation[]
+  responseTemplates ResponseTemplate[]
+  templates         GirlTemplate[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Instance {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  apiKey    String
-  baseUrl   String
-  girlId    String
-  girl      Girl     @relation(fields: [girlId], references: [id])
+  id      String @id @default(uuid())
+  name    String @unique
+  apiKey  String
+  baseUrl String
+  girlId  String
+  girl    Girl   @relation(fields: [girlId], references: [id])
 }
 
 model Client {
@@ -40,20 +42,22 @@ model Client {
   flags     String?
   createdAt DateTime @default(now())
 
-  girlClients GirlClient[]
+  girlClients  GirlClient[]
   interactions Interaction[]
 }
 
 model GirlClient {
-  id        String   @id @default(uuid())
-  girlId    String
-  clientId  Int
+  id       String @id @default(uuid())
+  girlId   String
+  clientId Int
 
-  score     Int      @default(0) // score por garota
-  flags     String?
+  score       Int     @default(0) // score por garota
+  flags       String?
+  desireLevel Int     @default(0)
+  lastHeat    Int     @default(0)
 
-  girl      Girl     @relation(fields: [girlId], references: [id])
-  client    Client   @relation(fields: [clientId], references: [id])
+  girl          Girl           @relation(fields: [girlId], references: [id])
+  client        Client         @relation(fields: [clientId], references: [id])
   conversations Conversation[]
 
   createdAt DateTime @default(now())
@@ -62,28 +66,30 @@ model GirlClient {
 }
 
 model Conversation {
-  id           String   @id @default(uuid())
+  id           String  @id @default(uuid())
   girlId       String
   girlClientId String
+  isActive     Boolean @default(true)
 
-  girl         Girl       @relation(fields: [girlId], references: [id])
-  girlClient   GirlClient @relation(fields: [girlClientId], references: [id])
+  girl       Girl       @relation(fields: [girlId], references: [id])
+  girlClient GirlClient @relation(fields: [girlClientId], references: [id])
 
-  messages     Message[]
+  messages Message[]
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Message {
-  id             String   @id @default(uuid())
+  id             String      @id @default(uuid())
   conversationId String
   role           MessageRole
   content        String
   mediaUrl       String?
 
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Interaction {
@@ -93,16 +99,16 @@ model Interaction {
   intent    String
   createdAt DateTime @default(now())
 
-  client    Client   @relation(fields: [clientId], references: [id])
-  girl      Girl     @relation(fields: [girlId], references: [id])
+  client Client @relation(fields: [clientId], references: [id])
+  girl   Girl   @relation(fields: [girlId], references: [id])
 }
 
 model Photo {
-  id        String   @id @default(uuid())
-  girlId    String
-  url       String
-  type      PhotoType
-  isActive  Boolean  @default(true)
+  id       String    @id @default(uuid())
+  girlId   String
+  url      String
+  type     PhotoType
+  isActive Boolean   @default(true)
 
   girl      Girl     @relation(fields: [girlId], references: [id])
   createdAt DateTime @default(now())
@@ -119,4 +125,51 @@ enum MessageRole {
   USER
   ASSISTANT
   SYSTEM
+}
+
+model ResponseTemplate {
+  id       String  @id @default(uuid())
+  girlId   String?
+  intent   String
+  content  String
+  priority Int     @default(0)
+
+  girl Girl? @relation(fields: [girlId], references: [id])
+}
+
+model Memory {
+  id             String     @id @default(uuid())
+  girlId         String
+  girlClientId   String
+  type           MemoryType
+  content        String
+  importance     Int        @default(5)
+  lastAccessedAt DateTime?
+  createdAt      DateTime   @default(now())
+}
+
+enum MemoryType {
+  FACT
+  EMOTION
+  PREFERENCE
+  RELATION
+}
+
+enum TemplateType {
+  BASE
+  FLIRTY
+  HOT
+  ADULT
+}
+
+model GirlTemplate {
+  id        String       @id @default(uuid())
+  girlId    String?
+  type      TemplateType
+  heatLevel Int
+  content   String
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+
+  girl Girl? @relation(fields: [girlId], references: [id])
 }

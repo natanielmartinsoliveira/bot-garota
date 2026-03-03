@@ -7,12 +7,17 @@ import { AiModule } from 'src/ai/ai.module';
 import { MessagingController } from './messaging.controller';
 import { IncomingMessageConsumer } from 'src/queue/consumers/incoming-message.consumer';
 import { OutgoingMessageConsumer } from 'src/queue/consumers/outgoing-message.consumer';
-import { RabbitMQModule as GolevelupRabbitMQModule } 
-  from '@golevelup/nestjs-rabbitmq';
+import { RabbitMQModule as GolevelupRabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { AppRabbitMQModule } from 'src/queue/rabbitmq.module';
+import { MemoryModule } from '../memory/memory.module';
+import { GirlModule } from '../girl/girl.module';
+import { ConversationEngineModule } from 'src/conversation-engine/conversation-engine.module';
 
 @Module({
   imports: [
+    ConversationEngineModule, // 👈 AQUI
+    GirlModule,
+    MemoryModule,
     AiModule,
     AppRabbitMQModule,
     GolevelupRabbitMQModule.forRoot({

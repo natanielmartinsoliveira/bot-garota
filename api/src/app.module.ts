@@ -5,7 +5,7 @@ import { WebhookModule } from './webhook/webhook.module';
 //import { OpenAIModule } from './ai/openai.module';
 import { RedisModule } from './cache/redis.module';
 import { ConfigModule } from '@nestjs/config';
-import { GirlsModule } from './girls/girls.module';
+import { GirlModule } from './girl/girl.module';
 import { ClientsModule } from './clients/clients.module';
 import { AiModule } from './ai/ai.module';
 import { AppRabbitMQModule } from './queue/rabbitmq.module';
@@ -22,7 +22,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AppRabbitMQModule, 
     RedisModule, 
     ClientsModule,
-    GirlsModule, 
+    GirlModule, 
     AiModule,
     TestModule],
   controllers: [AppController],
