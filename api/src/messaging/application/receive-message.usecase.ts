@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MemoryService } from '../../memory/memory.service';
 import { GirlResolveService } from '../../girl/application/girl-resolve.service';
 import { ResponseBuilderService } from 'src/conversation-engine/application/response-builder.service';
+import { MediaEngine } from 'src/mediaengine/application/media.engine';
 
 @Injectable()
 export class ReceiveMessageUseCase {
@@ -20,7 +21,7 @@ export class ReceiveMessageUseCase {
     private readonly memoryService: MemoryService,
     private readonly girlResolver: GirlResolveService,
     private readonly responseBuilder: ResponseBuilderService,
-    
+    private readonly mediaEngine: MediaEngine,
   ) {}
 
   async execute(message: Message) {
@@ -33,10 +34,12 @@ export class ReceiveMessageUseCase {
 
     /*
     =====================================
-    1️⃣ Resolver Girl via GirlResolveService
+    1️⃣ Resolver Girl
     =====================================
     */
+
     if (!message.channel) return;
+
     const girlContext =
       await this.girlResolver.resolveFromChannel(
         message.channel,
@@ -45,10 +48,11 @@ export class ReceiveMessageUseCase {
     if (!girlContext) return;
 
     /*
-     =====================================
-     2️⃣ Resolver Client + GirlClient
-     =====================================
+    =====================================
+    2️⃣ Resolver Client
+    =====================================
     */
+
     const client = await this.prisma.client.upsert({
       where: { phone: message.from },
       update: {},
@@ -70,9 +74,40 @@ export class ReceiveMessageUseCase {
     });
 
     /*
-     =====================================
-     🧠 3️⃣ MEMORY ENGINE
-     =====================================
+    =====================================
+    🎬 3️⃣ MEDIA INTERPRETATION
+    =====================================
+    */
+
+    let interpretedContent = message.content || '';
+
+    if (
+      message.type === 'image' ||
+      message.type === 'video' ||
+      message.type === 'audio'
+    ) {
+      try {
+        const mediaContext = await this.mediaEngine.analyze({
+          url: message.mediaUrl!,
+          type: message.type,
+          userMessage: message.content,
+          girlId: girlContext.girlId,
+          clientId: client.id.toString(),
+        });
+
+        interpretedContent =
+          this.mediaEngine.buildMediaPrompt(mediaContext);
+
+        console.log('🖼 Media interpreted:', interpretedContent);
+      } catch (error) {
+        console.log('⚠️ MediaEngine falhou:', error.message);
+      }
+    }
+
+    /*
+    =====================================
+    🧠 4️⃣ MEMORY ENGINE
+    =====================================
     */
 
     const conversation =
@@ -81,21 +116,18 @@ export class ReceiveMessageUseCase {
         girlClient.id,
       );
 
-    // Salva mensagem do usuário
     await this.memoryService.saveMessage(
       conversation.id,
       'USER',
-      message.content,
+      interpretedContent,
     );
 
-    // Short term
     const shortTerm =
       await this.memoryService.getShortTermMemory(
         conversation.id,
         12,
       );
 
-    // Long term
     const longTerm =
       await this.memoryService.getRelevantLongTermMemories(
         girlContext.girlId,
@@ -104,21 +136,21 @@ export class ReceiveMessageUseCase {
       );
 
     /*
-     =====================================
-     🎯 4️⃣ INTENT CLASSIFICATION
-     =====================================
+    =====================================
+    🎯 5️⃣ INTENT CLASSIFICATION
+    =====================================
     */
 
     const intent = await this.ai.classifyIntent(
-      message.content,
+      interpretedContent,
     );
 
     console.log('🎯 Intent:', intent);
 
     /*
-     =====================================
-     🧩 5️⃣ GIRL CONTEXT + PROMPT
-     =====================================
+    =====================================
+    🧩 6️⃣ PROMPT CONTEXT
+    =====================================
     */
 
     const prompt =
@@ -127,22 +159,22 @@ export class ReceiveMessageUseCase {
         personality: girlContext.personality,
         shortTermMemory: shortTerm,
         longTermMemory: longTerm,
-        newMessage: message.content,
+        newMessage: interpretedContent,
       });
 
     /*
-     =====================================
-     🤖 6️⃣ AI GENERATION
-     =====================================
+    =====================================
+    🤖 7️⃣ RESPONSE GENERATION
+    =====================================
     */
 
-     const totalMessages = await this.prisma.message.count({
-        where: {
-          conversationId: conversation.id,
-        },
-      });
+    const totalMessages = await this.prisma.message.count({
+      where: {
+        conversationId: conversation.id,
+      },
+    });
 
-     const reply =
+    const reply =
       await this.responseBuilder.generateReply({
         girl: {
           id: girlContext.girlId,
@@ -151,27 +183,16 @@ export class ReceiveMessageUseCase {
           tone: girlContext.tone || 'friendly',
         },
         userId: client.id,
-        message: message.content,
+        message: interpretedContent,
         totalMessages: totalMessages,
       });
-
-    /*const reply = await this.ai.generate(`
-      ${prompt}
-
-      Intenção detectada: ${intent}
-
-      Responda mantendo:
-      - personalidade consistente
-      - continuidade emocional
-      - naturalidade humana
-      `);*/
 
     console.log('🤖 Reply:', reply);
 
     /*
-     =====================================
-     💾 7️⃣ Persistir resposta
-     =====================================
+    =====================================
+    💾 8️⃣ SALVAR RESPOSTA
+    =====================================
     */
 
     await this.memoryService.saveMessage(
@@ -181,9 +202,9 @@ export class ReceiveMessageUseCase {
     );
 
     /*
-     =====================================
-     🧠 8️⃣ Memory Extraction
-     =====================================
+    =====================================
+    🧠 9️⃣ MEMORY EXTRACTION
+    =====================================
     */
 
     await this.memoryService.extractAndStoreMemories({
@@ -193,9 +214,9 @@ export class ReceiveMessageUseCase {
     });
 
     /*
-     =====================================
-     📤 9️⃣ Enviar mensagem
-     =====================================
+    =====================================
+    📤 10️⃣ ENVIAR RESPOSTA
+    =====================================
     */
 
     await channel.send({

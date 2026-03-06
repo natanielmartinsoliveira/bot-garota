@@ -12,6 +12,7 @@ import { AppRabbitMQModule } from 'src/queue/rabbitmq.module';
 import { MemoryModule } from '../memory/memory.module';
 import { GirlModule } from '../girl/girl.module';
 import { ConversationEngineModule } from 'src/conversation-engine/conversation-engine.module';
+import { MediaModule } from '../mediaengine/media.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ConversationEngineModule } from 'src/conversation-engine/conversation-e
     MemoryModule,
     AiModule,
     AppRabbitMQModule,
+    MediaModule,
     GolevelupRabbitMQModule.forRoot({
       uri: process.env.RABBITMQ_URI,
       exchanges: [

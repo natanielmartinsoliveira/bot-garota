@@ -11,6 +11,7 @@ import { AiModule } from './ai/ai.module';
 import { AppRabbitMQModule } from './queue/rabbitmq.module';
 import { TestModule } from './test/test.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { MediaModule } from './mediaengine/media.module';
 
 @Module({
   imports: [ConfigModule.forRoot({
@@ -18,6 +19,7 @@ import { PrismaModule } from './prisma/prisma.module';
        envFilePath: '.env',
     }),
     PrismaModule,
+    MediaModule,
     WebhookModule, 
     AppRabbitMQModule, 
     RedisModule, 
